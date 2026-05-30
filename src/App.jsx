@@ -434,6 +434,7 @@ export default function App() {
   const [modalMode, setModalMode] = useState(null); // null | "add" | entry
   const [showBackup,setShowBackup]= useState(false);
   const [nextId,    setNextId]    = useState(Date.now());
+  const [search,    setSearch]    = useState("");
 
   useEffect(()=>{
     dbGetAll().then(rows=>{
@@ -447,13 +448,27 @@ export default function App() {
     });
   },[]);
 
-  const active = useMemo(()=>entries.filter(e=>!e.confirmed&&!isPast(e.drawDate)),[entries]);
-  const drawn  = useMemo(()=>entries.filter(e=>!e.confirmed&&isPast(e.drawDate)),[entries]);
-  const done   = useMemo(()=>entries.filter(e=>e.confirmed),[entries]);
+  const filtered = useMemo(()=>{
+    if (!search.trim()) return entries;
+    const q = search.trim().toLowerCase();
+    return entries.filter(e => e.prize.toLowerCase().includes(q));
+  }, [entries, search]);
+
+  const active = useMemo(()=>filtered.filter(e=>!e.confirmed&&!isPast(e.drawDate)),[filtered]);
+  const drawn  = useMemo(()=>filtered.filter(e=>!e.confirmed&&isPast(e.drawDate)),[filtered]);
+  const done   = useMemo(()=>filtered.filter(e=>e.confirmed),[filtered]);
   const sort   = arr=>[...arr].sort((a,b)=>new Date(a.drawDate)-new Date(b.drawDate));
 
   const toggle = useCallback(async id=>{
-    const updated=entries.map(e=>e.id===id?{...e,confirmed:!e.confirmed}:e);
+    const updated = entries.map(e => {
+      if (e.id !== id) return e;
+      const nowConfirmed = !e.confirmed;
+      if (nowConfirmed && e.thumbBlob) {
+        revokeBlobUrl(e.id);
+        return { ...e, confirmed: true, thumbBlob: null };
+      }
+      return { ...e, confirmed: nowConfirmed };
+    });
     await dbPut(updated.find(e=>e.id===id));
     setEntries(updated);
   },[entries]);
@@ -647,6 +662,16 @@ export default function App() {
         .bk-msg{padding:11px 14px;border-radius:10px;font-size:12.5px;background:#e8f4ed;color:#3a6e50;border:1px solid #b8ddc8;line-height:1.5;}
         .bk-msg-err{background:#faeaea;color:#8a3a3a;border-color:#e8c0c0;}
 
+        /* Search bar */
+        .search-wrap{position:relative;display:flex;align-items:center;margin-bottom:12px;}
+        .search-icon{position:absolute;left:14px;color:var(--ink3);flex-shrink:0;pointer-events:none;}
+        .search-inp{width:100%;background:#fff;border:1.5px solid #dde8f0;border-radius:50px;padding:11px 40px 11px 38px;font-family:'Noto Sans TC',sans-serif;font-size:14px !important;color:var(--ink);outline:none;transition:border-color 0.15s,box-shadow 0.15s;-webkit-appearance:none;}
+        .search-inp:focus{border-color:var(--blue2);box-shadow:0 0 0 3px rgba(142,169,188,0.12);}
+        .search-inp::placeholder{color:var(--ink3);}
+        .search-inp::-webkit-search-cancel-button{display:none;}
+        .search-clear{position:absolute;right:14px;background:none;border:none;color:var(--ink3);cursor:pointer;font-size:13px;padding:4px;line-height:1;}
+        .search-clear:hover{color:var(--ink);}
+
         input[type="date"]::-webkit-calendar-picker-indicator{opacity:0.45;cursor:pointer;}
         input[type="number"]::-webkit-inner-spin-button{opacity:0.4;}
       `}</style>
@@ -663,6 +688,20 @@ export default function App() {
           <div className="stat stat-a"><div className="stat-num">{active.length}</div><div className="stat-label">進行中</div></div>
           <div className="stat stat-b"><div className="stat-num">{drawn.length}</div><div className="stat-label">待確認</div></div>
           <div className="stat stat-c"><div className="stat-num">{entries.length}</div><div className="stat-label">總計</div></div>
+        </div>
+
+        <div className="search-wrap">
+          <svg className="search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input
+            className="search-inp"
+            type="search"
+            placeholder="搜尋獎品名稱…"
+            value={search}
+            onChange={e=>setSearch(e.target.value)}
+          />
+          {search && (
+            <button className="search-clear" onClick={()=>setSearch("")}>✕</button>
+          )}
         </div>
 
         <div className="top-btns">
